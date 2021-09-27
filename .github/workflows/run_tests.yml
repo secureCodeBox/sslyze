@@ -1,4 +1,4 @@
-name: Run Tests
+name: "Run Tests"
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
       run: python -m invoke test
 
   run-modul-tests:
-    name: "Unit Test | Python"
+    name: "Modul Test | Python"
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -107,7 +107,7 @@ jobs:
     runs-on: windows-2019
     strategy:
       matrix:
-        python-version: [3.7, 3.8, 3.9]
+        python-version: [3.8]
 
     steps:
       - uses: actions/checkout@v2
