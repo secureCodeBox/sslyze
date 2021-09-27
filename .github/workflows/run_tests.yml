@@ -7,8 +7,8 @@ on:
     branches: [ release ]
 
 jobs:
-  build:
-
+  run-initial-tests:
+    name: "Unit Test | Python"
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -35,3 +35,139 @@ jobs:
 
     - name: Run tests
       run: python -m invoke test
+
+  run-modul-tests:
+    name: "Unit Test | Python"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9]
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Install pip
+      run: |
+        python -m pip install --upgrade pip setuptools
+
+    - name: Test SSLyze module setup
+      run: |
+        python setup.py install
+        cd docs  # Switch folder to avoid conflicts between ./sslyze and the installed sslyze module
+        python ../api_sample.py
+  
+  integrationtest-apache:
+    name: "Integration Test | Apache Web server"
+    needs:
+      - run-initial-tests
+      - run-modul-tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Apache2
+        run: |
+          sudo apt-get install apache2
+          sudo cp ./tests/web_servers/apache2/000-default.conf /etc/apache2/sites-enabled/000-default.conf
+          sudo cp ./tests/web_servers/apache2/apache-selfsigned.crt /etc/ssl/certs/apache-selfsigned.crt
+          sudo cp ./tests/web_servers/apache2/apache-selfsigned.key /etc/ssl/private/apache-selfsigned.key
+          sudo a2enmod ssl
+
+      - name: Start Apache2
+        # Start apache2 and display the status if it starting it failed
+        run: sudo /etc/init.d/apache2 restart || systemctl status apache2.service
+
+      - name: Install pip
+        run: |
+          python -m pip install --upgrade pip setuptools
+
+      - name: Install SSLyze
+        run: python setup.py install
+
+      - name: Scan web server
+        run: python tests/web_servers/scan_localhost.py apache2
+
+  integrationtest-iis:
+    name: "Integration Test | IIS Web server"
+    needs:
+      - run-initial-tests
+      - run-modul-tests
+    runs-on: windows-2019
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install IIS
+        run: |
+          Install-WindowsFeature -name Web-Server -IncludeManagementTools -IncludeAllSubFeature
+          Import-Module IISAdministration
+          # Generate a self-signed cert
+          $Cert = New-SelfSignedCertificate -DnsName "TestSite" -KeyAlgorithm RSA -KeyLength 2048 -CertStoreLocation "Cert:\LocalMachine\My" -NotAfter (Get-Date).AddYears(10)
+          $ThumbPrint = $Cert.Thumbprint
+          # Create an HTTPS binding with the self-signed cert
+          New-IISSiteBinding -Name "Default Web Site" -BindingInformation "*:443:" -CertificateThumbPrint $ThumbPrint -CertStoreLocation "Cert:\LocalMachine\My" -Protocol https
+
+      - name: Install pip
+        run: |
+          python -m pip install --upgrade pip setuptools
+
+      - name: Install SSLyze
+        run: python setup.py install
+
+      - name: Scan web server
+        run: python tests/web_servers/scan_localhost.py iis
+
+  integrationtest-nginx:
+    name: "Integration Test | Nginx Web server"
+    needs:
+      - run-initial-tests
+      - run-modul-tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.7, 3.8, 3.9]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install Nginx
+        run: |
+          sudo apt-get install nginx -y
+          sudo cp ./tests/web_servers/nginx/default  /etc/nginx/sites-available/default
+
+      - name: Start Nginx
+        # Start nginx and display the status if it starting it failed
+        run: sudo /etc/init.d/nginx restart || systemctl status nginx.service
+
+      - name: Install pip
+        run: |
+          python -m pip install --upgrade pip setuptools
+
+      - name: Install SSLyze
+        run: python setup.py install
+
+      - name: Scan web server
+        run: python tests/web_servers/scan_localhost.py nginx
